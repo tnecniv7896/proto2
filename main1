@@ -1,0 +1,172 @@
+#include <BLEDevice.h>
+#include <BLEHIDDevice.h>
+#include <BLEKeyboard.h>
+
+const int select = 2;
+const int start = 3;
+const int a = 4;
+const int b = 5;
+const int c = 6;
+const int up = 7;
+const int down = 8;
+const int left = 9;
+const int right = 10;
+const int u1 = 11;  // Bouton U1
+const int u2 = 12;  // Bouton U2
+
+BLEServer *pServer;
+BLEHIDDevice* hid;
+BLECharacteristic* inputKeyboard;
+
+bool inverserDirections = false;
+bool inversionDeclenchée = false;
+unsigned long dernierTempsInversion = 0;
+unsigned long dureeInversion = 30 * 1000;  // 30 secondes
+
+bool abcEnCab = false;
+unsigned long dernierTempsU2 = 0;
+unsigned long dureeU2 = 30 * 1000;  // 30 secondes
+
+void setup() {
+  pinMode(select, INPUT_PULLUP);
+  pinMode(start, INPUT_PULLUP);
+  pinMode(a, INPUT_PULLUP);
+  pinMode(b, INPUT_PULLUP);
+  pinMode(c, INPUT_PULLUP);
+  pinMode(up, INPUT_PULLUP);
+  pinMode(down, INPUT_PULLUP);
+  pinMode(left, INPUT_PULLUP);
+  pinMode(right, INPUT_PULLUP);
+  pinMode(u1, INPUT_PULLUP);
+  pinMode(u2, INPUT_PULLUP);
+
+  BLEDevice::init("ManetteBluetooth");
+  pServer = BLEDevice::createServer();
+  hid = new BLEHIDDevice(pServer);
+  inputKeyboard = hid->inputReport(1); // rapport d'entrée
+
+  hid->reportMap((uint8_t*)_hidReportDescriptor, sizeof(_hidReportDescriptor));
+  hid->startServices();
+
+  BLEAdvertising *pAdvertising = pServer->getAdvertising();
+  pAdvertising->setAppearance(HID_KEYBOARD);
+  pAdvertising->addServiceUUID(hid->hidService()->getUUID());
+  pAdvertising->setDiscoverable(true);
+  pAdvertising->start();
+
+  // Initialiser le clavier Bluetooth
+  BLEKeyboard.begin();
+}
+
+void loop() {
+  if (digitalRead(select) == LOW) {
+    BLEKeyboard.press(KEY_S);
+    BLEKeyboard.release(KEY_S);
+  }
+
+  if (digitalRead(start) == LOW) {
+    BLEKeyboard.press(KEY_T);
+    BLEKeyboard.release(KEY_T);
+  }
+
+  if (digitalRead(a) == LOW) {
+    if (abcEnCab) {
+      BLEKeyboard.press(KEY_C);
+      BLEKeyboard.release(KEY_C);
+    } else {
+      BLEKeyboard.press(KEY_A);
+      BLEKeyboard.release(KEY_A);
+    }
+  }
+
+  if (digitalRead(b) == LOW) {
+    if (abcEnCab) {
+      BLEKeyboard.press(KEY_A);
+      BLEKeyboard.release(KEY_A);
+    } else {
+      BLEKeyboard.press(KEY_B);
+      BLEKeyboard.release(KEY_B);
+    }
+  }
+
+  if (digitalRead(c) == LOW) {
+    if (abcEnCab) {
+      BLEKeyboard.press(KEY_B);
+      BLEKeyboard.release(KEY_B);
+    } else {
+      BLEKeyboard.press(KEY_C);
+      BLEKeyboard.release(KEY_C);
+    }
+  }
+
+  if (digitalRead(up) == LOW) {
+    if (inverserDirections) {
+      BLEKeyboard.press(KEY_DOWN);
+      BLEKeyboard.release(KEY_DOWN);
+    } else {
+      BLEKeyboard.press(KEY_UP);
+      BLEKeyboard.release(KEY_UP);
+    }
+  }
+
+  if (digitalRead(down) == LOW) {
+    if (inverserDirections) {
+      BLEKeyboard.press(KEY_UP);
+      BLEKeyboard.release(KEY_UP);
+    } else {
+      BLEKeyboard.press(KEY_DOWN);
+      BLEKeyboard.release(KEY_DOWN);
+    }
+  }
+
+  if (digitalRead(left) == LOW) {
+    if (inverserDirections) {
+      BLEKeyboard.press(KEY_RIGHT);
+      BLEKeyboard.release(KEY_RIGHT);
+    } else {
+      BLEKeyboard.press(KEY_LEFT);
+      BLEKeyboard.release(KEY_LEFT);
+    }
+  }
+
+  if (digitalRead(right) == LOW) {
+    if (inverserDirections) {
+      BLEKeyboard.press(KEY_LEFT);
+      BLEKeyboard.release(KEY_LEFT);
+    } else {
+      BLEKeyboard.press(KEY_RIGHT);
+      BLEKeyboard.release(KEY_RIGHT);
+    }
+  }
+
+  unsigned long tempsActuel = millis();
+
+  if (digitalRead(u1) == LOW) {
+    if (!inversionDeclenchée) {
+      if (tempsActuel - dernierTempsInversion >= 60000) {  // Une inversion par minute
+        inverserDirections = true;
+        dernierTempsInversion = tempsActuel;
+        inversionDeclenchée = true;
+      }
+    }
+  } else {
+    inversionDeclenchée = false;
+  }
+
+  if (digitalRead(u2) == LOW) {
+    if (!abcEnCab) {
+      abcEnCab = true;
+      dernierTempsU2 = tempsActuel;
+    }
+  }
+
+  // Désactive l'inversion après 30 secondes
+  if (inverserDirections && (tempsActuel - dernierTempsInversion >= dureeInversion)) {
+    inverserDirections = false;
+  }
+
+  // Désactive abcEnCab après 30 secondes
+  if (abcEnCab && (tempsActuel - dernierTempsU2 >= dureeU2)) {
+    abcEnCab = false;
+  }
+}
