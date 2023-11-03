@@ -1,208 +1,131 @@
-#include <BLEDevice.h>
-#include <BLEHIDDevice.h>
-#include <BLEKeyboard.h>
-#include <SoftwareSerial.h>
+#include <BluetoothSerial.h>
+#include <Keyboard.h>
+#include <SegaController.h>
 
-// Déclaration des boutons de la manette
-const int BOUTON_SELECT = 2;
-const int BOUTON_START = 3;
-const int BOUTON_A = 4;
-const int BOUTON_B = 5;
-const int BOUTON_C = 6;
-const int BOUTON_HAUT = 7;
-const int BOUTON_BAS = 8;
-const int BOUTON_GAUCHE = 9;
-const int BOUTON_DROITE = 10;
-const int BOUTON_U1 = 11;  // Bouton U1
-const int BOUTON_U2 = 12;  // Bouton U2
+BluetoothSerial SerialBT;
 
-BLEServer *serveurBLE;
-BLEHIDDevice* manetteHID;
-BLECharacteristic* rapportClavier;
+typedef struct
+{
+    word bouton;
+    char touche;
+} sortie;
 
-SoftwareSerial communicationBluetooth(13, 14);  // Configuration des broches RX et TX pour la communication Bluetooth
+// Mappage des boutons de la manette à des touches du clavier
+sortie sortieMap[] = {
+    { SC_BTN_UP,    KEY_UP_ARROW },
+    { SC_BTN_DOWN,  KEY_DOWN_ARROW },
+    { SC_BTN_LEFT,  KEY_LEFT_ARROW },
+    { SC_BTN_RIGHT, KEY_RIGHT_ARROW },
+    { SC_BTN_START, KEY_RETURN },
+    { SC_BTN_A,     'z' },
+    { SC_BTN_B,     'x' },
+    { SC_BTN_C,     'c' },
+    { SC_BTN_X,     'a' },
+    { SC_BTN_Y,     's' },
+    { SC_BTN_Z,     'd' },
+    { SC_BTN_MODE,  'q' }
+};
 
-bool inversionActivee = false;
-bool inversionDeclenchée = false;
-unsigned long dernierTempsInversion = 0;
-unsigned long dureeInversion = 30 * 1000;  // 30 secondes
-unsigned long intervalleInversion = 60 * 1000;  // Une inversion par minute
+const byte BOUTONS = 12;
 
-bool ordreBoutonsABC = false;
-bool u2Active = false;
-unsigned long dernierTempsU2 = 0;
-unsigned long dureeU2 = 30 * 1000;  // 30 secondes
+// Broches de la manette DB9 (vu de face à l'extrémité de la fiche) :
+//
+// 5 4 3 2 1
+//  9 8 7 6
+//
+// Connectez la broche 5 à +5V et la broche 8 à la masse (GND)
+// Connectez les autres broches aux broches d'E/S numériques (voir ci-dessous)
 
-void setup() {
-  // Configuration des broches en entrée avec résistance de tirage
-  pinMode(BOUTON_SELECT, INPUT_PULLUP);
-  pinMode(BOUTON_START, INPUT_PULLUP);
-  pinMode(BOUTON_A, INPUT_PULLUP);
-  pinMode(BOUTON_B, INPUT_PULLUP);
-  pinMode(BOUTON_C, INPUT_PULLUP);
-  pinMode(BOUTON_HAUT, INPUT_PULLUP);
-  pinMode(BOUTON_BAS, INPUT_PULLUP);
-  pinMode(BOUTON_GAUCHE, INPUT_PULLUP);
-  pinMode(BOUTON_DROITE, INPUT_PULLUP);
-  pinMode(BOUTON_U1, INPUT_PULLUP);
-  pinMode(BOUTON_U2, INPUT_PULLUP);
+// Spécifiez les broches Arduino connectées à
+// la broche DB9 7, la broche DB9 1, la broche DB9 2, la broche DB9 3, la broche DB9 4, la broche DB9 6, la broche DB9 9
+SegaController controller(8, 2, 3, 4, 5, 6, 7);
 
-  BLEDevice::init("ManetteBluetooth");
-  serveurBLE = BLEDevice::createServer();
-  manetteHID = new BLEHIDDevice(serveurBLE);
-  rapportClavier = manetteHID->inputReport(1);
+// États de la manette
+word etatCourant = 0;
+word dernierEtat = 0;
 
-  manetteHID->reportMap((uint8_t*)_hidReportDescriptor, sizeof(_hidReportDescriptor));
-  manetteHID->startServices();
+// Définir des variables pour suivre l'état des boutons U1 et U2
+bool u1Presse = false;
+bool u2Presse = false;
 
-  BLEAdvertising *publiciteBLE = serveurBLE->getAdvertising();
-  publiciteBLE->setAppearance(HID_KEYBOARD);
-  publiciteBLE->addServiceUUID(manetteHID->hidService()->getUUID());
-  publiciteBLE->setDiscoverable(true);
-  publiciteBLE->start();
-
-  BLEKeyboard.begin();
-
-  // Configuration de la communication Bluetooth
-  communicationBluetooth.begin(9600);
+void setup()
+{
+    Serial.begin(115200);
+    SerialBT.begin("ESP32-Emetteur-Recepteur");  // Nom du module Bluetooth
+    Keyboard.begin();
 }
 
-void loop() {
-  if (digitalRead(BOUTON_SELECT) == LOW) {
-    BLEKeyboard.press(KEY_S);
-    BLEKeyboard.release(KEY_S);
-  }
+void loop()
+{
+    etatCourant = controller.getState();
+    envoyerEtats();
+    
+    if (SerialBT.available()) {
+        String commande = SerialBT.readString();
+        
+        if (commande == "INVERSION_ACTIVEE") {
+            Serial.println("Inversion activée");
 
-  if (digitalRead(BOUTON_START) == LOW) {
-    BLEKeyboard.press(KEY_T);
-    BLEKeyboard.release(KEY_T);
-  }
+            // Réaliser l'inversion de la croix directionnelle
+            inverserCroix();
+        } else if (commande == "U2_ACTIVE") {
+            Serial.println("U2 activé");
 
-  if (digitalRead(BOUTON_A) == LOW) {
-    if (ordreBoutonsABC) {
-      BLEKeyboard.press(KEY_C);
-      BLEKeyboard.release(KEY_C);
+            // Inverser les boutons A, B et C
+            inverserBoutons();
+        } else {
+            Serial.println("Commande inconnue");
+        }
+    }
+
+    if (digitalRead(BOUTON_U1) == LOW) {
+        if (!u1Presse) {
+            SerialBT.println("INVERSION_ACTIVEE");  // Envoie la commande d'inversion via Bluetooth
+            u1Presse = true;
+        }
     } else {
-      BLEKeyboard.press(KEY_A);
-      BLEKeyboard.release(KEY_A);
+        u1Presse = false;
     }
-  }
 
-  if (digitalRead(BOUTON_B) == LOW) {
-    if (ordreBoutonsABC) {
-      BLEKeyboard.press(KEY_A);
-      BLEKeyboard.release(KEY_A);
+    if (digitalRead(BOUTON_U2) == LOW) {
+        if (!u2Presse) {
+            SerialBT.println("U2_ACTIVE");  // Envoie la commande U2 via Bluetooth
+            u2Presse = true;
+        }
     } else {
-      BLEKeyboard.press(KEY_B);
-      BLEKeyboard.release(KEY_B);
+        u2Presse = false;
     }
-  }
+    
+    delay(1000);
+}
 
-  if (digitalRead(BOUTON_C) == LOW) {
-    if (ordreBoutonsABC) {
-      BLEKeyboard.press(KEY_B);
-      BLEKeyboard.release(KEY_B);
-    } else {
-      BLEKeyboard.press(KEY_C);
-      BLEKeyboard.release(KEY_C);
+// Fonction pour inverser la croix directionnelle
+void inverserCroix() {
+    // Ajoutez ici le code pour inverser la croix directionnelle
+    // Par exemple, vous pouvez inverser les valeurs des boutons HAUT et BAS
+    if (etatCourant & SC_BTN_UP) {
+        etatCourant &= ~SC_BTN_UP;
+        etatCourant |= SC_BTN_DOWN;
+    } else if (etatCourant & SC_BTN_DOWN) {
+        etatCourant &= ~SC_BTN_DOWN;
+        etatCourant |= SC_BTN_UP;
     }
-  }
+}
 
-  if (digitalRead(BOUTON_HAUT) == LOW) {
-    if (inversionActivee) {
-      BLEKeyboard.press(KEY_DOWN);
-      BLEKeyboard.release(KEY_DOWN);
-    } else {
-      BLEKeyboard.press(KEY_UP);
-      BLEKeyboard.release(KEY_UP);
+// Fonction pour inverser les boutons A, B et C (ABC devient CAB)
+void inverserBoutons() {
+    word etatTemporaire = 0;
+
+    // Inverser les boutons A, B et C
+    if (etatCourant & SC_BTN_A) {
+        etatTemporaire |= SC_BTN_B;
     }
-  }
-
-  if (digitalRead(BOUTON_BAS) == LOW) {
-    if (inversionActivee) {
-      BLEKeyboard.press(KEY_UP);
-      BLEKeyboard.release(KEY_UP);
-    } else {
-      BLEKeyboard.press(KEY_DOWN);
-      BLEKeyboard.release(KEY_DOWN);
+    if (etatCourant & SC_BTN_B) {
+        etatTemporaire |= SC_BTN_C;
     }
-  }
-
-  if (digitalRead(BOUTON_GAUCHE) == LOW) {
-    if (inversionActivee) {
-      BLEKeyboard.press(KEY_RIGHT);
-      BLEKeyboard.release(KEY_RIGHT);
-    } else {
-      BLEKeyboard.press(KEY_LEFT);
-      BLEKeyboard.release(KEY_LEFT);
+    if (etatCourant & SC_BTN_C) {
+        etatTemporaire |= SC_BTN_A;
     }
-  }
 
-  if (digitalRead(BOUTON_DROITE) == LOW) {
-    if (inversionActivee) {
-      BLEKeyboard.press(KEY_LEFT);
-      BLEKeyboard.release(KEY_LEFT);
-    } else {
-      BLEKeyboard.press(KEY_RIGHT);
-      BLEKeyboard.release(KEY_RIGHT);
-    }
-  }
-
-  unsigned long tempsActuel = millis();
-
-  if (digitalRead(BOUTON_U1) == LOW) {
-    if (!inversionDeclenchée) {
-      if (tempsActuel - dernierTempsInversion >= intervalleInversion) {
-        inversionActivee = true;
-        dernierTempsInversion = tempsActuel;
-        inversionDeclenchée = true;
-      }
-    }
-  } else {
-    inversionDeclenchée = false;
-  }
-
-  // Désactiver l'inversion après 30 secondes
-  if (inversionActivee && (tempsActuel - dernierTempsInversion >= dureeInversion)) {
-    inversionActivee = false;
-  }
-
-  if (digitalRead(BOUTON_U2) == LOW) {
-    if (!u2Active) {
-      u2Active = true;
-      dernierTempsU2 = tempsActuel;
-    }
-  }
-
-  // Désactiver la fonction U2 après 30 secondes
-  if (u2Active && (tempsActuel - dernierTempsU2 >= dureeU2)) {
-    u2Active = false;
-  }
-
-  // Envoyer l'état d'inversion et de la fonction U2 via Bluetooth
-  if (inversionActivee) {
-    communicationBluetooth.println("INVERSION_ACTIVEE");
-  } else {
-    communicationBluetooth.println("INVERSION_DESACTIVEE");
-  }
-
-  if (u2Active) {
-    communicationBluetooth.println("U2_ACTIVE");
-  } else {
-    communicationBluetooth.println("U2_INACTIF");
-  }
-
-  // Recevoir des commandes via Bluetooth
-  while (communicationBluetooth.available()) {
-    String commande = communicationBluetooth.readString();
-    if (commande == "INVERSION_ACTIVEE") {
-      inversionActivee = true;
-    } else if (commande == "INVERSION_DESACTIVEE") {
-      inversionActivee = false;
-    } else if (commande == "U2_ACTIVE") {
-      u2Active = true;
-    } else if (commande == "U2_INACTIF") {
-      u2Active = false;
-    }
-  }
+    etatCourant = etatTemporaire;
 }
