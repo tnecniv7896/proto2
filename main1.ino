@@ -11,6 +11,7 @@ typedef struct
 } sortie;
 
 // Mappage des boutons de la manette à des touches du clavier
+// Il faut modifier les touches pour la deuxième manette 
 sortie sortieMap[] = {
     { SC_BTN_UP,    KEY_UP_ARROW },
     { SC_BTN_DOWN,  KEY_DOWN_ARROW },
@@ -101,8 +102,7 @@ void loop()
 
 // Fonction pour inverser la croix directionnelle
 void inverserCroix() {
-    // Ajoutez ici le code pour inverser la croix directionnelle
-    // Par exemple, vous pouvez inverser les valeurs des boutons HAUT et BAS
+    // Par exemple, les valeurs des boutons HAUT et BAS
     if (etatCourant & SC_BTN_UP) {
         etatCourant &= ~SC_BTN_UP;
         etatCourant |= SC_BTN_DOWN;
