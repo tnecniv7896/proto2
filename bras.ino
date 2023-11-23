@@ -17,8 +17,7 @@ void setup() {
   pinMode(23, INPUT);
   pinMode(34, INPUT);
 
-  SerialBT.begin("ESP32-Emetteur-Recepteur");  // Nom du module Bluetooth
-  Keyboard.begin();
+  BleKeyboard.begin();
 
   // Initialiser les chronomètres
   Cu1 = millis();
@@ -94,9 +93,9 @@ void loop() {
   inverserBoutons();
 
   // Exemple d'utilisation des chronomètres (temps en millisecondes)
-  unsigned long tempsEcouléC1 = millis() - Cu1;
-  unsigned long tempsEcouléC2 = millis() - Cu2;
-  unsigned long tempsEcouléC3 = millis() - Cu3;
+  unsigned long tempsEcouleC1 = millis() - Cu1;
+  unsigned long tempsEcouleC2 = millis() - Cu2;
+  unsigned long tempsEcouleC3 = millis() - Cu3;
 
   // Faire quelque chose avec les temps écoulés si nécessaire
 }
