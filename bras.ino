@@ -16,7 +16,7 @@ const int boutonDirectionDroite = 9;
 int konamiCode[] = {boutonDirectionHaut,boutonDirectionHaut, boutonDirectionBas, boutonDirectionBas,boutonDirectionGauche, boutonDirectionDroite, boutonDirectionGauche, boutonDirectionDroite, 'B', 'A'};
 int konamiIndex = 0;
 
-int secretCode[] = {KEY_DOWN_ARROW, boutonDirectionBas, 'A', 'B', 'C', 'C', 'B', 'A', 'A', 'B'};
+int secretCode[] = {boutonDirectionBas, boutonDirectionBas, 'A', 'B', 'C', 'C', 'B', 'A', 'A', 'B'};
 int secretIndex = 0;
 
 int anotherSecretCode[] = {boutonDirectionHaut, boutonDirectionHaut,boutonDirectionBas,boutonDirectionBas, boutonDirectionGauche, boutonDirectionDroite, boutonDirectionGauche, boutonDirectionDroite, 'B', 'A', 'A', 'B', 'C', 'C'};
