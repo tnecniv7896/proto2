@@ -1,109 +1,136 @@
-#include <BleKeyboard.h>
 
-BleKeyboard bleKeyboard;
-unsigned long Cu1, Cu2, Cu3; // Déclaration des chronomètres
+#include <Keyboard.h>
+#include <BluetoothSerial.h>
 
+BluetoothSerial SerialBT;
+
+const int boutonA = 2;
+const int boutonB = 3;
+const int boutonC = 4;
+const int boutonStart = 5;
+const int boutonDirectionHaut = 6;
+const int boutonDirectionBas = 7;
+const int boutonDirectionGauche = 8;
+const int boutonDirectionDroite = 9;
+
+int konamiCode[] = {boutonDirectionHaut,boutonDirectionHaut, boutonDirectionBas, boutonDirectionBas,boutonDirectionGauche, boutonDirectionDroite, boutonDirectionGauche, boutonDirectionDroite, 'B', 'A'};
+int konamiIndex = 0;
+
+int secretCode[] = {KEY_DOWN_ARROW, boutonDirectionBas, 'A', 'B', 'C', 'C', 'B', 'A', 'A', 'B'};
+int secretIndex = 0;
+
+int anotherSecretCode[] = {boutonDirectionHaut, boutonDirectionHaut,boutonDirectionBas,boutonDirectionBas, boutonDirectionGauche, boutonDirectionDroite, boutonDirectionGauche, boutonDirectionDroite, 'B', 'A', 'A', 'B', 'C', 'C'};
+int anotherSecretIndex = 0;
+
+bool invertedDirections = false;
+unsigned long invertedStartTime = 0;
+const unsigned long invertedDuration = 30000; // 30 secondes
+
+bool disableABC = false;
 void setup() {
-  Serial.begin(115200);
+  pinMode(boutonA, INPUT_PULLUP);
+  pinMode(boutonB, INPUT_PULLUP);
+  pinMode(boutonC, INPUT_PULLUP);
+  pinMode(boutonStart, INPUT_PULLUP);
+  pinMode(boutonDirectionHaut, INPUT_PULLUP);
+  pinMode(boutonDirectionBas, INPUT_PULLUP);
+  pinMode(boutonDirectionGauche, INPUT_PULLUP);
+  pinMode(boutonDirectionDroite, INPUT_PULLUP);
 
-  // Configurer les broches en mode d'entrée
-  pinMode(25, INPUT);
-  pinMode(22, INPUT);
-  pinMode(32, INPUT);
-  pinMode(18, INPUT);
-  pinMode(35, INPUT);
-  pinMode(19, INPUT);
-  pinMode(33, INPUT);
-  pinMode(23, INPUT);
-  pinMode(34, INPUT);
+  Keyboard.begin();
 
-  BleKeyboard.begin();
-
-  // Initialiser les chronomètres
-  Cu1 = millis();
-  Cu2 = millis();
-  Cu3 = millis();
+  SerialBT.begin("ESP32_BT");  // Nom du module Bluetooth
 }
+void loopBluetooth() {
+  if (SerialBT.available()) {
+    // Lire les données Bluetooth
+    String command = SerialBT.readStringUntil('\n');
 
+    // Traiter la commande reçue
+    processBluetoothCommand(command);
+  }
+}
 void loop() {
-  // Lire les valeurs des broches et les imprimer
-  int A = digitalRead(25);
-  int B = digitalRead(22);
-  int C = digitalRead(32);
-  int haut = digitalRead(18);
-  int bas = digitalRead(35);
-  int droite = digitalRead(19);
-  int gauche = digitalRead(33);
-  int select = digitalRead(23);
-  int what = digitalRead(34);
+  int etatA = digitalRead(boutonA);
+  int etatB = digitalRead(boutonB);
+  int etatC = digitalRead(boutonC);
+  int etatStart = digitalRead(boutonStart);
+  int etatDirectionHaut = digitalRead(boutonDirectionHaut);
+  int etatDirectionBas = digitalRead(boutonDirectionBas);
+  int etatDirectionGauche = digitalRead(boutonDirectionGauche);
+  int etatDirectionDroite = digitalRead(boutonDirectionDroite);
 
-  if (A) {
-    bleKeyboard.press(KEY_NUM_1);
-    bleKeyboard.releaseAll();
-    Serial.println("waza1");
-    Cu1 = millis(); // Réinitialiser le chronomètre C1
+  if (checkKonamiCode(etatA, etatB, etatC, etatStart, etatDirectionHaut, etatDirectionBas, etatDirectionGauche, etatDirectionDroite)) {
+    sendBluetoothCommand("U1=1");
   }
 
-  if (B) {
-    bleKeyboard.press(KEY_NUM_2);
-    bleKeyboard.releaseAll();
-    Serial.println("waza2");
-    Cu2 = millis(); // Réinitialiser le chronomètre C2
+  if (checkSecretCode(etatA, etatB, etatC, etatStart, etatDirectionHaut, etatDirectionBas, etatDirectionGauche, etatDirectionDroite)) {
+    sendBluetoothCommand("B=1");
+    invertedDirections = true;
+    invertedStartTime = millis();
   }
 
-  if (C) {
-    bleKeyboard.press(KEY_NUM_3);
-    bleKeyboard.releaseAll();
-    Serial.println("waza3");
-    Cu3 = millis(); // Réinitialiser le chronomètre C3
+  if (checkAnotherSecretCode(etatA, etatB, etatC, etatStart, etatDirectionHaut, etatDirectionBas, etatDirectionGauche, etatDirectionDroite)) {
+    sendBluetoothCommand("C=1");
   }
 
-  if (haut) {
-    bleKeyboard.press(KEY_NUM_4);
-    bleKeyboard.releaseAll();
-    Serial.println("waza4");
+  if (etatA == LOW && !disableABC) {
+    Keyboard.write('A');
+    delay(100);
   }
 
-  if (droite) {
-    bleKeyboard.press(KEY_NUM_5);
-    bleKeyboard.releaseAll();
-    Serial.println("waza5");
+  if (etatB == LOW && !disableABC) {
+    Keyboard.write('B');
+    delay(100);
   }
 
-  if (bas) {
-    bleKeyboard.press(KEY_NUM_6);
-    bleKeyboard.releaseAll();
-    Serial.println("waza6");
+  if (etatC == LOW && !disableABC) {
+    Keyboard.write('C');
+    delay(100);
   }
 
-  if (gauche) {
-    bleKeyboard.press(KEY_NUM_7);
-    bleKeyboard.releaseAll();
-    Serial.println("waza7");
+  if (etatStart == LOW) {
+    // Ajoutez le code correspondant au bouton Start ici
+    delay(100);
   }
 
-  if (select) {
-    bleKeyboard.press(KEY_NUM_8);
-    bleKeyboard.releaseAll();
-    Serial.println("waza8");
+  // Répétez le processus pour les autres boutons...
+
+  if (disableABC) {
+    etatA = HIGH;
+    etatB = HIGH;
+    etatC = HIGH;
   }
 
-  // Appeler les fonctions si nécessaire
-  inverserCroix();
-  inverserBoutons();
+  if (invertedDirections) {
+    // Inverser les directions pendant 30 secondes
+    if (millis() - invertedStartTime < invertedDuration) {
+      etatDirectionHaut = !etatDirectionHaut;
+      etatDirectionBas = !etatDirectionBas;
+      etatDirectionGauche = !etatDirectionGauche;
+      etatDirectionDroite = !etatDirectionDroite;
+    } else {
+      invertedDirections = false;
+    }
+  }
 
-  // Exemple d'utilisation des chronomètres (temps en millisecondes)
-  unsigned long tempsEcouleC1 = millis() - Cu1;
-  unsigned long tempsEcouleC2 = millis() - Cu2;
-  unsigned long tempsEcouleC3 = millis() - Cu3;
-
-  // Faire quelque chose avec les temps écoulés si nécessaire
+  delay(50);
 }
 
-void inverserCroix() {
-  // Implémenter la logique pour inverser les boutons de la croix si nécessaire
+
+
+void processBluetoothCommand(String command) {
+  // Logique pour traiter la commande Bluetooth ici
+  // Par exemple, imprimer la commande reçue
+  Serial.println("Commande Bluetooth reçue : " + command);
+
+  // Ajouter des instructions pour traiter différentes commandes
+  if (command == "U1=1") {
+    // Logique pour traiter la commande U1=1
+  } else if (command == "B=1") {
+    // Logique pour traiter la commande B=1
+  } else if (command == "C=1") {
+    // Logique pour traiter la commande C=1
+  }
 }
 
-void inverserBoutons() {
-  // Implémenter la logique pour inverser les boutons A, B et C si nécessaire
-}
